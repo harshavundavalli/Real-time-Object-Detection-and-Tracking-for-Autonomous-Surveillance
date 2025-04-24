@@ -1,0 +1,298 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surveillance Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .dashboard {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .panel {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .video-panel {
+            flex: 2;
+            min-width: 640px;
+        }
+        .log-panel {
+            flex: 1;
+            min-width: 300px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .stats-panel {
+            flex: 1;
+            min-width: 300px;
+        }
+        .video-container {
+            width: 100%;
+            text-align: center;
+        }
+        .video-feed {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+        }
+        .log-entry {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .log-entry:nth-child(odd) {
+            background-color: #f9f9f9;
+        }
+        h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 5px;
+            background-color: #f9f9f9;
+            border-radius: 3px;
+        }
+        .stat-label {
+            font-weight: bold;
+        }
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .detection-count {
+            margin-top: 20px;
+        }
+        .count-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Real-time Surveillance Dashboard</h1>
+    </div>
+    
+    <div class="container">
+        <div class="dashboard">
+            <div class="panel video-panel">
+                <h2>Live Feed</h2>
+                <div class="video-container">
+                    <img src="{{ url_for('video_feed') }}" class="video-feed" alt="Live Feed">
+                </div>
+                <div class="controls">
+                    <button onclick="toggleTracking()">Toggle Tracking</button>
+                    <button onclick="captureSnapshot()">Capture Snapshot</button>
+                </div>
+            </div>
+            
+            <div class="panel stats-panel">
+                <h2>Statistics</h2>
+                <div class="stat">
+                    <span class="stat-label">FPS:</span>
+                    <span id="fps-value">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Active Tracks:</span>
+                    <span id="tracks-value">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Runtime:</span>
+                    <span id="runtime-value">00:00:00</span>
+                </div>
+                
+                <h3>Detection Count</h3>
+                <div class="detection-count" id="detection-count">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+            
+            <div class="panel log-panel">
+                <h2>Tracking Log</h2>
+                <div id="log-entries">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Variables
+        let startTime = new Date();
+        let trackingEnabled = true;
+        let detectionCounts = {};
+        
+        // Update runtime clock
+        setInterval(() => {
+            const now = new Date();
+            const diff = Math.floor((now - startTime) / 1000);
+            const hours = Math.floor(diff / 3600).toString().padStart(2, '0');
+            const minutes = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
+            const seconds = Math.floor(diff % 60).toString().padStart(2, '0');
+            document.getElementById('runtime-value').textContent = `${hours}:${minutes}:${seconds}`;
+        }, 1000);
+        
+        // Update logs periodically
+        function updateLogs() {
+            fetch('/logs')
+                .then(response => response.json())
+                .then(data => {
+                    const logEntries = document.getElementById('log-entries');
+                    logEntries.innerHTML = '';
+                    
+                    // Process logs to update statistics
+                    let activeTracks = new Set();
+                    
+                    data.logs.forEach(log => {
+                        if (!log.trim()) return;
+                        
+                        // Create log entry
+                        const entry = document.createElement('div');
+                        entry.className = 'log-entry';
+                        entry.textContent = log;
+                        logEntries.appendChild(entry);
+                        
+                        // Extract information for statistics
+                        try {
+                            const parts = log.split(',');
+                            if (parts.length >= 8) {
+                                const trackId = parts[1];
+                                const className = parts[2];
+                                
+                                // Update active tracks
+                                activeTracks.add(trackId);
+                                
+                                // Update detection counts
+                                if (!detectionCounts[className]) {
+                                    detectionCounts[className] = 0;
+                                }
+                                detectionCounts[className]++;
+                            }
+                        } catch (error) {
+                            console.error("Error parsing log entry:", error);
+                        }
+                    });
+                    
+                    // Update tracks count
+                    document.getElementById('tracks-value').textContent = activeTracks.size;
+                    
+                    // Update detection counts
+                    const detectionCountDiv = document.getElementById('detection-count');
+                    detectionCountDiv.innerHTML = '';
+                    
+                    Object.entries(detectionCounts).forEach(([className, count]) => {
+                        const countItem = document.createElement('div');
+                        countItem.className = 'count-item';
+                        countItem.innerHTML = `
+                            <span>${className}:</span>
+                            <span>${count}</span>
+                        `;
+                        detectionCountDiv.appendChild(countItem);
+                    });
+                    
+                    // Scroll to bottom of log panel
+                    logEntries.scrollTop = logEntries.scrollHeight;
+                })
+                .catch(error => console.error('Error fetching logs:', error));
+        }
+        
+        // Toggle tracking
+        function toggleTracking() {
+            trackingEnabled = !trackingEnabled;
+            fetch(`/toggle_tracking?enabled=${trackingEnabled}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Tracking toggled:", data.status);
+                })
+                .catch(error => console.error('Error toggling tracking:', error));
+        }
+        
+        // Capture snapshot
+        function captureSnapshot() {
+            const videoFeed = document.querySelector('.video-feed');
+            
+            // Create a canvas element
+            const canvas = document.createElement('canvas');
+            canvas.width = videoFeed.naturalWidth;
+            canvas.height = videoFeed.naturalHeight;
+            
+            // Draw the video frame on the canvas
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoFeed, 0, 0);
+            
+            // Create a temporary link and trigger download
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = `snapshot_${new Date().toISOString().replace(/:/g, '-')}.png`;
+            link.click();
+        }
+        
+        // Extract FPS from video feed
+        function extractFPS() {
+            const videoFeed = document.querySelector('.video-feed');
+            if (videoFeed && videoFeed.complete) {
+                // Use canvas to analyze image and extract FPS text
+                const canvas = document.createElement('canvas');
+                canvas.width = videoFeed.naturalWidth;
+                canvas.height = videoFeed.naturalHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(videoFeed, 0, 0);
+                
+                // We can't reliably extract text from an image in JavaScript
+                // This is just a placeholder - in a real implementation, the FPS
+                // would be provided by the server through an API endpoint
+            }
+        }
+        
+        // Update data periodically
+        setInterval(updateLogs, 2000);  // Update logs every 2 seconds
+        setInterval(extractFPS, 1000);  // Try to extract FPS every second
+    </script>
+</body>
+</html>
