@@ -128,6 +128,7 @@
                 <div class="controls">
                     <button onclick="toggleTracking()">Toggle Tracking</button>
                     <button onclick="captureSnapshot()">Capture Snapshot</button>
+                    
                 </div>
             </div>
             
@@ -177,6 +178,19 @@
             document.getElementById('runtime-value').textContent = `${hours}:${minutes}:${seconds}`;
         }, 1000);
         
+        function updateStats() {
+        fetch('/stats')
+            .then(response => response.json())
+            .then(data => {
+                // Update FPS
+                document.getElementById('fps-value').textContent = data.fps.toFixed(2);
+                
+                // Update active tracks count
+                document.getElementById('tracks-value').textContent = data.active_tracks;
+            })
+            .catch(error => console.error('Error fetching stats:', error));
+        }
+
         // Update logs periodically
         function updateLogs() {
             fetch('/logs')
@@ -209,9 +223,9 @@
                                 
                                 // Update detection counts
                                 if (!detectionCounts[className]) {
-                                    detectionCounts[className] = 0;
+                                    detectionCounts[className] = new Set();
                                 }
-                                detectionCounts[className]++;
+                                detectionCounts[className].add(trackId);
                             }
                         } catch (error) {
                             console.error("Error parsing log entry:", error);
@@ -225,12 +239,12 @@
                     const detectionCountDiv = document.getElementById('detection-count');
                     detectionCountDiv.innerHTML = '';
                     
-                    Object.entries(detectionCounts).forEach(([className, count]) => {
+                    Object.entries(detectionCounts).forEach(([className, trackIds]) => {
                         const countItem = document.createElement('div');
                         countItem.className = 'count-item';
                         countItem.innerHTML = `
                             <span>${className}:</span>
-                            <span>${count}</span>
+                            <span>${trackIds.size}</span>
                         `;
                         detectionCountDiv.appendChild(countItem);
                     });
@@ -271,28 +285,12 @@
             link.download = `snapshot_${new Date().toISOString().replace(/:/g, '-')}.png`;
             link.click();
         }
+
         
-        // Extract FPS from video feed
-        function extractFPS() {
-            const videoFeed = document.querySelector('.video-feed');
-            if (videoFeed && videoFeed.complete) {
-                // Use canvas to analyze image and extract FPS text
-                const canvas = document.createElement('canvas');
-                canvas.width = videoFeed.naturalWidth;
-                canvas.height = videoFeed.naturalHeight;
-                
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(videoFeed, 0, 0);
-                
-                // We can't reliably extract text from an image in JavaScript
-                // This is just a placeholder - in a real implementation, the FPS
-                // would be provided by the server through an API endpoint
-            }
-        }
         
         // Update data periodically
         setInterval(updateLogs, 2000);  // Update logs every 2 seconds
-        setInterval(extractFPS, 1000);  // Try to extract FPS every second
+        setInterval(updateStats, 1000);  // Try to extract FPS every second
     </script>
 </body>
 </html>

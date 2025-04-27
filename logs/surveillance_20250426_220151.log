@@ -1,0 +1,2 @@
+2025-04-26 22:01:53,185 - surveillance - INFO - Starting web dashboard on http://localhost:8080
+2025-04-26 22:02:02,148 - surveillance - ERROR - Error starting video: name 'args' is not defined

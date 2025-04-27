@@ -10,14 +10,14 @@ import torch
 from threading import Thread
 import queue
 import logging
-from flask import Flask, Response, render_template
+from flask import Flask, Response, render_template, request, jsonify
 import datetime
 
 # Import custom modules
 from detection import Detection
 from tracking import Tracking
 from utils import draw_boxes, setup_logger
-from dataset import prepare_custom_dataset, train_custom_model
+
 
 # Set up logging
 logger = setup_logger()
@@ -36,6 +36,7 @@ class VideoProcessor:
         self.frame_queue = queue.Queue(maxsize=10)
         self.result_queue = queue.Queue(maxsize=10)
         self.stopped = False
+        self.tracking_enabled = True  # Add tracking enabled flag
         
         # Create output directory if it doesn't exist
         os.makedirs(output_folder, exist_ok=True)
@@ -91,14 +92,22 @@ class VideoProcessor:
                 # Perform detection
                 detections = self.detector.detect(frame)
                 
-                # Update tracker
-                tracks = self.tracker.update(detections, frame)
-                
-                # Draw bounding boxes
-                result_frame = draw_boxes(frame.copy(), tracks)
-                
-                # Log tracking information
-                self.log_tracks(tracks)
+                # Update tracker if tracking is enabled
+                if self.tracking_enabled:
+                    tracks = self.tracker.update(detections, frame)
+                    # Draw bounding boxes with tracking
+                    result_frame = draw_boxes(frame.copy(), tracks)
+                    # Log tracking information
+                    self.log_tracks(tracks)
+                else:
+                    tracks = []
+                    # Draw only detection boxes without tracking
+                    result_frame = frame.copy()
+                    for det in detections:
+                        x1, y1, x2, y2, conf, class_id, class_name = det
+                        cv2.rectangle(result_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(result_frame, f"{class_name} ({conf:.2f})", (x1, y1 - 10), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                 
                 # Calculate FPS
                 self.frame_count += 1
@@ -109,10 +118,25 @@ class VideoProcessor:
                 cv2.putText(result_frame, f"FPS: {current_fps:.2f}", (10, 30), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 
+                # Add tracking status to the frame
+                status_text = "Tracking: ON" if self.tracking_enabled else "Tracking: OFF"
+                cv2.putText(result_frame, status_text, (10, 70), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                
                 # Put the result in the result queue
                 self.result_queue.put(result_frame)
             else:
                 time.sleep(0.01)  # Sleep briefly to avoid CPU hogging
+
+    def toggle_tracking(self, enabled=None):
+        """Toggle or set tracking status"""
+        if enabled is not None:
+            self.tracking_enabled = enabled
+        else:
+            self.tracking_enabled = not self.tracking_enabled
+        
+        logger.info(f"Tracking {'enabled' if self.tracking_enabled else 'disabled'}")
+        return self.tracking_enabled
     
     def log_tracks(self, tracks):
         """Log tracking information to CSV file"""
@@ -144,7 +168,12 @@ class VideoProcessor:
         self.stopped = True
         if self.cap.isOpened():
             self.cap.release()
-
+    
+    def get_fps(self):
+        """Get the current frames per second"""
+        elapsed_time = time.time() - self.start_time
+        current_fps = self.frame_count / elapsed_time if elapsed_time > 0 else 0
+        return round(current_fps, 2)
 
 # Flask web application for the dashboard
 app = Flask(__name__)
@@ -173,6 +202,9 @@ def video_feed():
     """Video streaming route"""
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+  
+
+
 
 @app.route('/logs')
 def logs():
@@ -183,6 +215,40 @@ def logs():
         return {'logs': log_content}
     return {'logs': []}
 
+@app.route('/toggle_tracking')
+def toggle_tracking():
+    """Toggle tracking on/off"""
+    enabled = request.args.get('enabled')
+    if enabled is not None:
+        # Convert string to boolean
+        enabled = enabled.lower() == 'true'
+        status = video_processor.toggle_tracking(enabled)
+    else:
+        status = video_processor.toggle_tracking()
+    
+    return jsonify({'status': 'enabled' if status else 'disabled'})
+
+@app.route('/stats')
+def stats():
+    """Return current statistics"""
+    if video_processor:
+        # Get active tracks count
+        active_tracks = 0
+        for track in video_processor.tracker.tracks:
+            if track.hits >= video_processor.tracker.min_hits:
+                active_tracks += 1
+                
+        return jsonify({
+            'fps': video_processor.get_fps(),
+            'active_tracks': active_tracks,
+            'uptime_seconds': int(time.time() - video_processor.start_time)
+        })
+    return jsonify({
+        'fps': 0,
+        'active_tracks': 0,
+        'uptime_seconds': 0
+    })
+
 def main():
     """Main function to start the application"""
     global video_processor
@@ -190,18 +256,9 @@ def main():
     parser = argparse.ArgumentParser(description='Real-time Object Detection and Tracking')
     parser.add_argument('--source', type=str, default='0', help='Video source (0 for webcam, or file path)')
     parser.add_argument('--output', type=str, default='output', help='Output folder')
-    parser.add_argument('--train', action='store_true', help='Train custom model')
-    parser.add_argument('--dataset', type=str, default='', help='Custom dataset path for training')
     parser.add_argument('--web', action='store_true', help='Run web dashboard')
     args = parser.parse_args()
     
-    # Train custom model if requested
-    if args.train and args.dataset:
-        logger.info(f"Preparing custom dataset from {args.dataset}")
-        dataset_path = prepare_custom_dataset(args.dataset)
-        logger.info(f"Training custom model using dataset at {dataset_path}")
-        model_path = train_custom_model(dataset_path)
-        logger.info(f"Custom model trained and saved at {model_path}")
     
     # Initialize video processor
     video_source = int(args.source) if args.source.isdigit() else args.source

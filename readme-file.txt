@@ -48,50 +48,6 @@ python main.py --source 0 --web  # Use webcam with web dashboard
 ```
 Then open a browser and go to: http://localhost:5000
 
-### Custom Training
-
-1. Prepare your dataset in YOLO format:
-   ```
-   dataset/
-   ├── train/
-   │   ├── images/
-   │   │   ├── img1.jpg
-   │   │   ├── img2.jpg
-   │   │   └── ...
-   │   └── labels/
-   │       ├── img1.txt
-   │       ├── img2.txt
-   │       └── ...
-   └── val/
-       ├── images/
-       │   ├── img_val1.jpg
-       │   ├── img_val2.jpg
-       │   └── ...
-       └── labels/
-           ├── img_val1.txt
-           ├── img_val2.txt
-           └── ...
-   ```
-
-2. Create a `dataset.yaml` file in your dataset folder:
-   ```yaml
-   path: /path/to/dataset
-   train: /path/to/dataset/train/images
-   val: /path/to/dataset/val/images
-   names:
-     0: person
-     1: car
-     # Add your classes
-   ```
-
-3. Run the training:
-   ```bash
-   python main.py --train --dataset path/to/dataset
-   ```
-
-4. Once training is complete, use the custom model:
-   ```bash
-   python main.py --source 0 --model runs/train/custom_model/weights/best.pt
    ```
 
 ## Project Structure
@@ -100,7 +56,6 @@ Then open a browser and go to: http://localhost:5000
 - `detection.py`: Object detection module using YOLOv8
 - `tracking.py`: Object tracking module with simplified DeepSORT
 - `utils.py`: Utility functions for visualization and logging
-- `dataset.py`: Custom dataset handling and training utilities
 - `templates/index.html`: Web dashboard template
 
 ## Performance Notes
@@ -128,4 +83,4 @@ Then open a browser and go to: http://localhost:5000
 - This is a simplified implementation for educational purposes
 - The tracking algorithm is a simplified version of DeepSORT
 - The system may not handle extremely crowded scenes well
-- Custom training requires properly labeled data in YOLO format
+
