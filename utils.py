@@ -4,20 +4,11 @@ import cv2
 import numpy as np
 import logging
 import os
-import sys
 from datetime import datetime
 
+# Utility function to draw bounding boxes and tracking information on a frame
 def draw_boxes(frame, tracks):
-    """
-    Draw bounding boxes and tracking information on the frame
     
-    Args:
-        frame (numpy.ndarray): Input frame
-        tracks (list): List of tracking objects
-        
-    Returns:
-        numpy.ndarray: Frame with bounding boxes and tracking info
-    """
     # Define colors for different classes (for better visualization)
     colors = {
         0: (0, 255, 0),    # Person - Green
@@ -34,10 +25,10 @@ def draw_boxes(frame, tracks):
     # Draw boxes for each track
     for track in tracks:
         # Get bounding box
-        x1, y1, x2, y2 = track.bbox
+        x1, y1, x2, y2 = track.box
         
         # Get color based on class ID
-        color = colors.get(track.class_id, (255, 255, 255))  # Default to white if class not in colors
+        color = colors.get(track.class_id, (255, 255, 255))  
         
         # Draw bounding box
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -52,8 +43,8 @@ def draw_boxes(frame, tracks):
     
     return frame
 
+# setup_logger function to configure logging for the application
 def setup_logger():
-    """Set up logging configuration"""
     logger = logging.getLogger('surveillance')
     logger.setLevel(logging.INFO)
     

@@ -2,19 +2,12 @@
 
 import torch
 import numpy as np
-import cv2
 from ultralytics import YOLO
 
+# Detection class for YOLOv8 object detection
 class Detection:
-    def __init__(self, model_path="yolov8n.pt", conf_threshold=0.3, device=None):
-        """
-        Initialize the object detector
+    def __init__(self, model_path="yolov8n.pt", conf_threshold=0.5, device=None):
         
-        Args:
-            model_path (str): Path to YOLOv8 model
-            conf_threshold (float): Confidence threshold for detections
-            device (str): Device to run inference on (None for auto-selection)
-        """
         self.conf_threshold = conf_threshold
         
         # Determine device (CPU or GPU)
@@ -27,16 +20,9 @@ class Detection:
         self.model = YOLO(model_path)
         print(f"Model loaded on {self.device}")
     
+    # Detect objects in a given frame
     def detect(self, frame):
-        """
-        Perform object detection on a frame
         
-        Args:
-            frame (numpy.ndarray): Input image frame
-            
-        Returns:
-            List of detection results [x1, y1, x2, y2, confidence, class_id]
-        """
         # Run inference
         results = self.model(frame, conf=self.conf_threshold, verbose=False)[0]
         

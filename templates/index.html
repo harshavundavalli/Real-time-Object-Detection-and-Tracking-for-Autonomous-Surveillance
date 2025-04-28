@@ -146,6 +146,10 @@
                     <span class="stat-label">Runtime:</span>
                     <span id="runtime-value">00:00:00</span>
                 </div>
+                <div class="stat">
+                    <span class="stat-label">ID Switches:</span>
+                    <span id="id-switches-value">0</span>
+                </div>
                 
                 <h3>Detection Count</h3>
                 <div class="detection-count" id="detection-count">
@@ -187,6 +191,10 @@
                 
                 // Update active tracks count
                 document.getElementById('tracks-value').textContent = data.active_tracks;
+                
+                // Update ID switches count
+                document.getElementById('id-switches-value').textContent = data.id_switches;
+
             })
             .catch(error => console.error('Error fetching stats:', error));
         }

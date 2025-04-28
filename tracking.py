@@ -6,8 +6,8 @@ from scipy.optimize import linear_sum_assignment
 
 class TrackingObject:
     """Object tracking state representation"""
-    def __init__(self, bbox, confidence, class_id, class_name):
-        self.bbox = bbox  # [x1, y1, x2, y2]
+    def __init__(self, box, confidence, class_id, class_name):
+        self.box = box  # [x1, y1, x2, y2]
         self.confidence = confidence
         self.class_id = class_id
         self.class_name = class_name
@@ -17,15 +17,15 @@ class TrackingObject:
         self.age = 0
         
         # Calculate centroid
-        self.centroid = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
+        self.centroid = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
         
         # Initialize Kalman filter state
         self.kf = KalmanFilter()
         self.kf.initialize_state(self.centroid[0], self.centroid[1], 0, 0)
     
-    def update(self, bbox, confidence, class_id, class_name):
+    def update(self, box, confidence, class_id, class_name):
         """Update tracking object with new detection"""
-        self.bbox = bbox
+        self.box = box
         self.confidence = confidence
         self.class_id = class_id
         self.class_name = class_name
@@ -33,7 +33,7 @@ class TrackingObject:
         self.hits += 1
         
         # Update centroid
-        self.centroid = ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
+        self.centroid = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
         
         # Update Kalman filter with measurement
         self.kf.update(self.centroid[0], self.centroid[1])
@@ -45,7 +45,7 @@ class TrackingObject:
     
     def to_tlbr(self):
         """Convert bounding box to top-left bottom-right format"""
-        return self.bbox
+        return self.box
 
 
 class KalmanFilter:
@@ -113,28 +113,25 @@ class KalmanFilter:
         self.P = (I - K @ self.H) @ self.P
 
 
+# Tracking class for managing multiple object tracks
 class Tracking:
-    """Object tracking class"""
     def __init__(self, max_age=30, min_hits=3, iou_threshold=0.3):
-        """
-        Initialize tracker
         
-        Args:
-            max_age (int): Maximum frames to keep track without detection
-            min_hits (int): Minimum hits to confirm a track
-            iou_threshold (float): IOU threshold for matching
-        """
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
         self.tracks = []
         self.next_id = 1
+
+        # Add these lines for ID switch tracking
+        self.prev_tracks = []  # Tracks from previous frame
+        self.id_switches = 0   # Counter for ID switches
     
-    def iou(self, bbox1, bbox2):
-        """Calculate IOU between two bounding boxes"""
+    # Method to calculate Intersection over Union (IOU) between two bounding boxes
+    def iou(self, box1, box2):
         # Extract coordinates
-        x1_1, y1_1, x2_1, y2_1 = bbox1
-        x1_2, y1_2, x2_2, y2_2 = bbox2
+        x1_1, y1_1, x2_1, y2_1 = box1
+        x1_2, y1_2, x2_2, y2_2 = box2
         
         # Calculate area of bounding boxes
         area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
@@ -160,23 +157,39 @@ class Tracking:
         
         return iou
     
-    def update(self, detections, frame=None):
-        """
-        Update tracks with new detections
-        
-        Args:
-            detections (list): List of detections [x1, y1, x2, y2, confidence, class_id, class_name]
-            frame (numpy.ndarray): Current frame (unused, kept for compatibility)
+    # Method to detect ID switches between frames
+    def detect_id_switches(self, current_tracks):
+
+        if not self.prev_tracks:
+            self.prev_tracks = current_tracks.copy()
+            return 0
             
-        Returns:
-            List of active tracks
-        """
+        switches = 0
+        
+        # Check each previous track against current tracks
+        for prev_track in self.prev_tracks:
+            for curr_track in current_tracks:
+                # If high IoU but different IDs -> ID switch detected
+                iou_value = self.iou(prev_track.box, curr_track.box)
+                if (iou_value > 0.8 and  # Higher threshold for ID switch detection
+                    prev_track.track_id != curr_track.track_id and
+                    prev_track.class_id == curr_track.class_id):
+                    switches += 1
+                    break
+        
+        # Store current tracks for next comparison
+        self.prev_tracks = current_tracks.copy()
+        return switches
+    
+    # Update method to process detections and manage tracks
+    def update(self, detections, frame=None):
+        
         # Create detection objects
         detection_objects = []
         for det in detections:
             x1, y1, x2, y2, confidence, class_id, class_name = det
-            bbox = [x1, y1, x2, y2]
-            detection_objects.append(TrackingObject(bbox, confidence, class_id, class_name))
+            box = [x1, y1, x2, y2]
+            detection_objects.append(TrackingObject(box, confidence, class_id, class_name))
         
         # Update track age
         for track in self.tracks:
@@ -192,7 +205,7 @@ class Tracking:
             cost_matrix = np.zeros((len(self.tracks), len(detection_objects)))
             for i, track in enumerate(self.tracks):
                 for j, det in enumerate(detection_objects):
-                    cost_matrix[i, j] = 1 - self.iou(track.bbox, det.bbox)
+                    cost_matrix[i, j] = 1 - self.iou(track.box, det.box)
             
             # Solve assignment problem
             row_indices, col_indices = linear_sum_assignment(cost_matrix)
@@ -202,7 +215,7 @@ class Tracking:
                 if cost_matrix[row, col] < 1 - self.iou_threshold:  # Convert IOU threshold to cost
                     track = self.tracks[row]
                     det = detection_objects[col]
-                    track.update(det.bbox, det.confidence, det.class_id, det.class_name)
+                    track.update(det.box, det.confidence, det.class_id, det.class_name)
                     # Mark as matched
                     detection_objects[col] = None
             
@@ -210,8 +223,8 @@ class Tracking:
             detection_objects = [det for det in detection_objects if det is not None]
         
         # Create new tracks for unmatched detections
-        for det in detection_objects:
-            track = TrackingObject(det.bbox, det.confidence, det.class_id, det.class_name)
+        for detection_object_track in detection_objects:
+            track = detection_object_track
             track.track_id = self.next_id
             self.next_id += 1
             self.tracks.append(track)
@@ -221,5 +234,7 @@ class Tracking:
         
         # Return active tracks (tracks with enough hits)
         active_tracks = [track for track in self.tracks if track.hits >= self.min_hits]
-        
+        # Add this line to detect ID switches
+        switches = self.detect_id_switches(active_tracks)
+        self.id_switches += switches
         return active_tracks

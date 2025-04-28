@@ -1,5 +1,0 @@
-2025-04-26 20:21:35,935 - surveillance - INFO - Preparing custom dataset from ./dataset
-2025-04-26 20:21:35,935 - surveillance - INFO - Dataset already in YOLO format, copying files...
-2025-04-26 20:21:35,956 - surveillance - INFO - Dataset prepared successfully at dataset/prepared
-2025-04-26 20:21:35,956 - surveillance - INFO - Training custom model using dataset at dataset/prepared
-2025-04-26 20:21:35,956 - surveillance - INFO - Training custom model on dataset/prepared
